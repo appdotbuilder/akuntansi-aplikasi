@@ -1,13 +1,92 @@
+import { db } from '../db';
+import { accountsTable, transactionDetailsTable, transactionHeadersTable } from '../db/schema';
 import { type Balance, type ReportFilter } from '../schema';
+import { eq, and, lte, sum, desc } from 'drizzle-orm';
 
 // ===== FINANCIAL POSITION REPORT (Laporan Posisi Keuangan) =====
 
 // Generate Balance Sheet / Financial Position Report
 export async function getFinancialPositionReport(filter: ReportFilter): Promise<Balance[]> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is generating a balance sheet showing assets, liabilities, and equity.
-    // Should group accounts by type (ASET, KEWAJIBAN, EKUITAS) and calculate balances.
-    return [];
+    try {
+        // Get all accounts that are relevant for balance sheet (ASET, KEWAJIBAN, EKUITAS) and active
+        const accounts = await db.select()
+            .from(accountsTable)
+            .where(eq(accountsTable.is_active, true))
+            .execute();
+
+        const balanceSheetAccounts = accounts.filter(account => 
+            ['ASET', 'KEWAJIBAN', 'EKUITAS'].includes(account.tipe)
+        );
+
+        const results: Balance[] = [];
+
+        for (const account of balanceSheetAccounts) {
+            // Get all transaction details for this account within the date range
+            // Join with transaction headers to filter by date
+            const accountTransactions = await db.select({
+                debit: transactionDetailsTable.debit,
+                kredit: transactionDetailsTable.kredit
+            })
+            .from(transactionDetailsTable)
+            .innerJoin(transactionHeadersTable, eq(transactionDetailsTable.header_id, transactionHeadersTable.id))
+            .where(
+                and(
+                    eq(transactionDetailsTable.account_id, account.id),
+                    lte(transactionHeadersTable.tanggal, filter.sampai_tanggal)
+                )
+            )
+            .execute();
+
+            // Calculate totals
+            const totalDebit = accountTransactions.reduce((sum, tx) => 
+                sum + parseFloat(tx.debit), 0);
+            const totalKredit = accountTransactions.reduce((sum, tx) => 
+                sum + parseFloat(tx.kredit), 0);
+
+            // Calculate ending balance based on account type
+            let saldoAkhir: number;
+            const saldoAwal = parseFloat(account.saldo_awal);
+            
+            if (account.tipe === 'ASET') {
+                // Assets: Debit increases, Credit decreases
+                saldoAkhir = saldoAwal + totalDebit - totalKredit;
+            } else if (account.tipe === 'KEWAJIBAN' || account.tipe === 'EKUITAS') {
+                // Liabilities & Equity: Credit increases, Debit decreases
+                saldoAkhir = saldoAwal + totalKredit - totalDebit;
+            } else {
+                saldoAkhir = saldoAwal + totalDebit - totalKredit;
+            }
+
+            results.push({
+                account_id: account.id,
+                account_kode: account.kode,
+                account_nama: account.nama,
+                account_tipe: account.tipe as 'ASET' | 'KEWAJIBAN' | 'EKUITAS' | 'PENDAPATAN' | 'BEBAN',
+                saldo_awal: saldoAwal,
+                debit: totalDebit,
+                kredit: totalKredit,
+                saldo_akhir: saldoAkhir
+            });
+        }
+
+        // Sort by account type (ASET first, then KEWAJIBAN, then EKUITAS) and then by code
+        results.sort((a, b) => {
+            const typeOrder = { 'ASET': 1, 'KEWAJIBAN': 2, 'EKUITAS': 3 };
+            const aOrder = typeOrder[a.account_tipe as keyof typeof typeOrder] || 4;
+            const bOrder = typeOrder[b.account_tipe as keyof typeof typeOrder] || 4;
+            
+            if (aOrder !== bOrder) {
+                return aOrder - bOrder;
+            }
+            
+            return a.account_kode.localeCompare(b.account_kode);
+        });
+
+        return results;
+    } catch (error) {
+        console.error('Financial position report generation failed:', error);
+        throw error;
+    }
 }
 
 // ===== INCOME STATEMENT REPORT (Laporan Laba Rugi) =====

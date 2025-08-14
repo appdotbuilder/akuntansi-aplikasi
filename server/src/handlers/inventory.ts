@@ -1,151 +1,313 @@
+import { db } from '../db';
+import { inventoryGroupsTable, inventoryTable } from '../db/schema';
 import { type CreateInventoryGroupInput, type InventoryGroup, type CreateInventoryInput, type Inventory } from '../schema';
+import { eq, lte, sql } from 'drizzle-orm';
 
 // ===== INVENTORY GROUPS (Kelompok Persediaan) =====
 
 // Get all inventory groups
 export async function getInventoryGroups(): Promise<InventoryGroup[]> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is fetching all inventory groups from the database.
-    return [];
+  try {
+    const results = await db.select()
+      .from(inventoryGroupsTable)
+      .execute();
+
+    return results;
+  } catch (error) {
+    console.error('Failed to get inventory groups:', error);
+    throw error;
+  }
 }
 
 // Get inventory group by ID
 export async function getInventoryGroupById(id: number): Promise<InventoryGroup | null> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is fetching a specific inventory group by its ID.
-    return null;
+  try {
+    const results = await db.select()
+      .from(inventoryGroupsTable)
+      .where(eq(inventoryGroupsTable.id, id))
+      .execute();
+
+    return results.length > 0 ? results[0] : null;
+  } catch (error) {
+    console.error('Failed to get inventory group by ID:', error);
+    throw error;
+  }
 }
 
 // Create new inventory group
 export async function createInventoryGroup(input: CreateInventoryGroupInput): Promise<InventoryGroup> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is creating a new inventory group and persisting it in the database.
-    return {
-        id: 0, // Placeholder ID
+  try {
+    const results = await db.insert(inventoryGroupsTable)
+      .values({
         kode: input.kode,
         nama: input.nama,
-        deskripsi: input.deskripsi,
-        created_at: new Date(),
-        updated_at: new Date()
-    } as InventoryGroup;
+        deskripsi: input.deskripsi
+      })
+      .returning()
+      .execute();
+
+    return results[0];
+  } catch (error) {
+    console.error('Failed to create inventory group:', error);
+    throw error;
+  }
 }
 
 // Update inventory group
 export async function updateInventoryGroup(id: number, input: Partial<CreateInventoryGroupInput>): Promise<InventoryGroup> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is updating an existing inventory group in the database.
-    return {
-        id,
-        kode: input.kode || '',
-        nama: input.nama || '',
-        deskripsi: input.deskripsi || null,
-        created_at: new Date(),
-        updated_at: new Date()
-    } as InventoryGroup;
+  try {
+    const updateData: any = {
+      updated_at: sql`now()`
+    };
+
+    if (input.kode !== undefined) updateData.kode = input.kode;
+    if (input.nama !== undefined) updateData.nama = input.nama;
+    if (input.deskripsi !== undefined) updateData.deskripsi = input.deskripsi;
+
+    const results = await db.update(inventoryGroupsTable)
+      .set(updateData)
+      .where(eq(inventoryGroupsTable.id, id))
+      .returning()
+      .execute();
+
+    if (results.length === 0) {
+      throw new Error(`Inventory group with ID ${id} not found`);
+    }
+
+    return results[0];
+  } catch (error) {
+    console.error('Failed to update inventory group:', error);
+    throw error;
+  }
 }
 
 // Delete inventory group
 export async function deleteInventoryGroup(id: number): Promise<boolean> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is deleting an inventory group from the database.
-    // Should check for existing inventory items before deletion.
-    return true;
+  try {
+    // Check if group has inventory items
+    const inventoryItems = await db.select({ count: sql<number>`count(*)` })
+      .from(inventoryTable)
+      .where(eq(inventoryTable.kelompok_id, id))
+      .execute();
+
+    if (inventoryItems[0].count > 0) {
+      throw new Error('Cannot delete inventory group: it has inventory items');
+    }
+
+    const results = await db.delete(inventoryGroupsTable)
+      .where(eq(inventoryGroupsTable.id, id))
+      .returning()
+      .execute();
+
+    return results.length > 0;
+  } catch (error) {
+    console.error('Failed to delete inventory group:', error);
+    throw error;
+  }
 }
 
 // ===== INVENTORY ITEMS (Data Persediaan) =====
 
-// Get all inventory items with their groups
+// Get all inventory items
 export async function getInventory(): Promise<Inventory[]> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is fetching all inventory items with their group information.
-    return [];
+  try {
+    const results = await db.select()
+      .from(inventoryTable)
+      .execute();
+
+    return results.map(item => ({
+      ...item,
+      harga_beli: parseFloat(item.harga_beli),
+      harga_jual: parseFloat(item.harga_jual)
+    }));
+  } catch (error) {
+    console.error('Failed to get inventory:', error);
+    throw error;
+  }
 }
 
 // Get inventory item by ID
 export async function getInventoryById(id: number): Promise<Inventory | null> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is fetching a specific inventory item by its ID.
-    return null;
+  try {
+    const results = await db.select()
+      .from(inventoryTable)
+      .where(eq(inventoryTable.id, id))
+      .execute();
+
+    if (results.length === 0) return null;
+
+    const item = results[0];
+    return {
+      ...item,
+      harga_beli: parseFloat(item.harga_beli),
+      harga_jual: parseFloat(item.harga_jual)
+    };
+  } catch (error) {
+    console.error('Failed to get inventory by ID:', error);
+    throw error;
+  }
 }
 
 // Get inventory items by group
 export async function getInventoryByGroup(kelompokId: number): Promise<Inventory[]> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is fetching inventory items filtered by their group.
-    return [];
+  try {
+    const results = await db.select()
+      .from(inventoryTable)
+      .where(eq(inventoryTable.kelompok_id, kelompokId))
+      .execute();
+
+    return results.map(item => ({
+      ...item,
+      harga_beli: parseFloat(item.harga_beli),
+      harga_jual: parseFloat(item.harga_jual)
+    }));
+  } catch (error) {
+    console.error('Failed to get inventory by group:', error);
+    throw error;
+  }
 }
 
 // Get low stock inventory items
 export async function getLowStockInventory(): Promise<Inventory[]> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is fetching inventory items where stock <= min_stock.
-    return [];
+  try {
+    const results = await db.select()
+      .from(inventoryTable)
+      .where(lte(inventoryTable.stok, inventoryTable.min_stok))
+      .execute();
+
+    return results.map(item => ({
+      ...item,
+      harga_beli: parseFloat(item.harga_beli),
+      harga_jual: parseFloat(item.harga_jual)
+    }));
+  } catch (error) {
+    console.error('Failed to get low stock inventory:', error);
+    throw error;
+  }
 }
 
 // Create new inventory item
 export async function createInventory(input: CreateInventoryInput): Promise<Inventory> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is creating a new inventory item and persisting it in the database.
-    return {
-        id: 0, // Placeholder ID
+  try {
+    // Verify inventory group exists
+    const group = await getInventoryGroupById(input.kelompok_id);
+    if (!group) {
+      throw new Error(`Inventory group with ID ${input.kelompok_id} does not exist`);
+    }
+
+    const results = await db.insert(inventoryTable)
+      .values({
         kode: input.kode,
         nama: input.nama,
         kelompok_id: input.kelompok_id,
         satuan: input.satuan,
-        harga_beli: input.harga_beli,
-        harga_jual: input.harga_jual,
+        harga_beli: input.harga_beli.toString(),
+        harga_jual: input.harga_jual.toString(),
         stok: input.stok,
         min_stok: input.min_stok,
-        is_active: input.is_active,
-        created_at: new Date(),
-        updated_at: new Date()
-    } as Inventory;
+        is_active: input.is_active
+      })
+      .returning()
+      .execute();
+
+    const item = results[0];
+    return {
+      ...item,
+      harga_beli: parseFloat(item.harga_beli),
+      harga_jual: parseFloat(item.harga_jual)
+    };
+  } catch (error) {
+    console.error('Failed to create inventory:', error);
+    throw error;
+  }
 }
 
 // Update inventory item
 export async function updateInventory(id: number, input: Partial<CreateInventoryInput>): Promise<Inventory> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is updating an existing inventory item in the database.
+  try {
+    // Verify inventory group exists if being updated
+    if (input.kelompok_id !== undefined) {
+      const group = await getInventoryGroupById(input.kelompok_id);
+      if (!group) {
+        throw new Error(`Inventory group with ID ${input.kelompok_id} does not exist`);
+      }
+    }
+
+    const updateData: any = {
+      updated_at: sql`now()`
+    };
+
+    if (input.kode !== undefined) updateData.kode = input.kode;
+    if (input.nama !== undefined) updateData.nama = input.nama;
+    if (input.kelompok_id !== undefined) updateData.kelompok_id = input.kelompok_id;
+    if (input.satuan !== undefined) updateData.satuan = input.satuan;
+    if (input.harga_beli !== undefined) updateData.harga_beli = input.harga_beli.toString();
+    if (input.harga_jual !== undefined) updateData.harga_jual = input.harga_jual.toString();
+    if (input.stok !== undefined) updateData.stok = input.stok;
+    if (input.min_stok !== undefined) updateData.min_stok = input.min_stok;
+    if (input.is_active !== undefined) updateData.is_active = input.is_active;
+
+    const results = await db.update(inventoryTable)
+      .set(updateData)
+      .where(eq(inventoryTable.id, id))
+      .returning()
+      .execute();
+
+    if (results.length === 0) {
+      throw new Error(`Inventory item with ID ${id} not found`);
+    }
+
+    const item = results[0];
     return {
-        id,
-        kode: input.kode || '',
-        nama: input.nama || '',
-        kelompok_id: input.kelompok_id || 0,
-        satuan: input.satuan || '',
-        harga_beli: input.harga_beli || 0,
-        harga_jual: input.harga_jual || 0,
-        stok: input.stok || 0,
-        min_stok: input.min_stok || 0,
-        is_active: input.is_active ?? true,
-        created_at: new Date(),
-        updated_at: new Date()
-    } as Inventory;
+      ...item,
+      harga_beli: parseFloat(item.harga_beli),
+      harga_jual: parseFloat(item.harga_jual)
+    };
+  } catch (error) {
+    console.error('Failed to update inventory:', error);
+    throw error;
+  }
 }
 
 // Update inventory stock
 export async function updateInventoryStock(id: number, quantity: number): Promise<Inventory> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is updating inventory stock quantity (for stock transactions).
-    return {
-        id,
-        kode: '',
-        nama: '',
-        kelompok_id: 0,
-        satuan: '',
-        harga_beli: 0,
-        harga_jual: 0,
+  try {
+    const results = await db.update(inventoryTable)
+      .set({
         stok: quantity,
-        min_stok: 0,
-        is_active: true,
-        created_at: new Date(),
-        updated_at: new Date()
-    } as Inventory;
+        updated_at: sql`now()`
+      })
+      .where(eq(inventoryTable.id, id))
+      .returning()
+      .execute();
+
+    if (results.length === 0) {
+      throw new Error(`Inventory item with ID ${id} not found`);
+    }
+
+    const item = results[0];
+    return {
+      ...item,
+      harga_beli: parseFloat(item.harga_beli),
+      harga_jual: parseFloat(item.harga_jual)
+    };
+  } catch (error) {
+    console.error('Failed to update inventory stock:', error);
+    throw error;
+  }
 }
 
 // Delete inventory item
 export async function deleteInventory(id: number): Promise<boolean> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is deleting an inventory item from the database.
-    // Should check for existing transactions before deletion.
-    return true;
+  try {
+    const results = await db.delete(inventoryTable)
+      .where(eq(inventoryTable.id, id))
+      .returning()
+      .execute();
+
+    return results.length > 0;
+  } catch (error) {
+    console.error('Failed to delete inventory:', error);
+    throw error;
+  }
 }

@@ -1,54 +1,99 @@
+import { db } from '../db';
+import { companiesTable } from '../db/schema';
 import { type CreateCompanyInput, type Company } from '../schema';
+import { eq } from 'drizzle-orm';
 
 // Get all companies
 export async function getCompanies(): Promise<Company[]> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is fetching all companies from the database.
-    return [];
+  try {
+    const results = await db.select()
+      .from(companiesTable)
+      .execute();
+
+    return results;
+  } catch (error) {
+    console.error('Failed to fetch companies:', error);
+    throw error;
+  }
 }
 
 // Get company by ID
 export async function getCompanyById(id: number): Promise<Company | null> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is fetching a specific company by its ID.
-    return null;
+  try {
+    const results = await db.select()
+      .from(companiesTable)
+      .where(eq(companiesTable.id, id))
+      .execute();
+
+    return results.length > 0 ? results[0] : null;
+  } catch (error) {
+    console.error('Failed to fetch company by ID:', error);
+    throw error;
+  }
 }
 
 // Create new company
 export async function createCompany(input: CreateCompanyInput): Promise<Company> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is creating a new company and persisting it in the database.
-    return {
-        id: 0, // Placeholder ID
+  try {
+    const results = await db.insert(companiesTable)
+      .values({
         nama: input.nama,
         alamat: input.alamat,
         telepon: input.telepon,
         email: input.email,
-        npwp: input.npwp,
-        created_at: new Date(),
-        updated_at: new Date()
-    } as Company;
+        npwp: input.npwp
+      })
+      .returning()
+      .execute();
+
+    return results[0];
+  } catch (error) {
+    console.error('Company creation failed:', error);
+    throw error;
+  }
 }
 
 // Update company
 export async function updateCompany(id: number, input: Partial<CreateCompanyInput>): Promise<Company> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is updating an existing company in the database.
-    return {
-        id,
-        nama: input.nama || '',
-        alamat: input.alamat || null,
-        telepon: input.telepon || null,
-        email: input.email || null,
-        npwp: input.npwp || null,
-        created_at: new Date(),
+  try {
+    // First check if company exists
+    const existingCompany = await getCompanyById(id);
+    if (!existingCompany) {
+      throw new Error(`Company with id ${id} not found`);
+    }
+
+    const results = await db.update(companiesTable)
+      .set({
+        ...input,
         updated_at: new Date()
-    } as Company;
+      })
+      .where(eq(companiesTable.id, id))
+      .returning()
+      .execute();
+
+    return results[0];
+  } catch (error) {
+    console.error('Company update failed:', error);
+    throw error;
+  }
 }
 
 // Delete company
 export async function deleteCompany(id: number): Promise<boolean> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is deleting a company from the database.
+  try {
+    // First check if company exists
+    const existingCompany = await getCompanyById(id);
+    if (!existingCompany) {
+      return false;
+    }
+
+    await db.delete(companiesTable)
+      .where(eq(companiesTable.id, id))
+      .execute();
+
     return true;
+  } catch (error) {
+    console.error('Company deletion failed:', error);
+    throw error;
+  }
 }
